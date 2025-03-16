@@ -5,7 +5,10 @@ import java.io.File
 /**
  * A simplified implementation of StaticAnalyzer that uses regex to parse Kotlin code.
  * This is less accurate than the full Kotlin compiler API version but more reliable for quick testing.
+ * 
+ * @deprecated Use [StaticAnalyzer] instead, which provides more accurate analysis using the Kotlin Compiler API.
  */
+@Deprecated("Use StaticAnalyzer instead, which provides more accurate analysis using the Kotlin Compiler API")
 class SimpleStaticAnalyzer {
     
     /**

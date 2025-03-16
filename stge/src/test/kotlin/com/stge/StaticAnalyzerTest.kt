@@ -33,7 +33,7 @@ class StaticAnalyzerTest {
         """.trimIndent())
         
         // Run the analyzer
-        val analyzer = SimpleStaticAnalyzer()
+        val analyzer = StaticAnalyzer()
         val result = analyzer.analyzeProject(listOf(testFile))
         
         // Verify the analysis results
@@ -73,7 +73,7 @@ class StaticAnalyzerTest {
         """.trimIndent())
         
         // Run the analyzer
-        val analyzer = SimpleStaticAnalyzer()
+        val analyzer = StaticAnalyzer()
         val result = analyzer.analyzeProject(listOf(testFile))
         
         // Find functions with vararg parameters

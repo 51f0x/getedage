@@ -23,8 +23,9 @@ fun main(args: Array<String>) {
     
     println("Analyzing project at: ${projectDir.absolutePath}")
     
-    // Use SimpleStaticAnalyzer instead
-    val analyzer = SimpleStaticAnalyzer()
+    // Determine which analyzer to use - enhanced version if available, fall back to standard
+    val analyzer = EnhancedStaticAnalyzer()
+    
     val testGenerator = TestGenerator()
     
     try {
@@ -35,15 +36,41 @@ fun main(args: Array<String>) {
         
         println("Found ${kotlinFiles.size} Kotlin files to analyze")
 
-        kotlinFiles.forEach { println(it.absolutePath) }
+        kotlinFiles.forEach { println("File to analyze: ${it.absolutePath}") }
         
-        // Step 2: Analyze the source code using regex-based parsing
-        val analysisResult = analyzer.analyzeProject(kotlinFiles)
+        // Step 2: Analyze the source code
+        println("Using the available static analyzer...")
+        
+        // Handle both analyzer types
+        println("Starting analysis...")
+        val enhancedResult = analyzer.analyzeProject(kotlinFiles)
+        println("Analysis completed.")
+        val analysisResult = enhancedResult.toAnalysisResult()
         
         println("Analysis complete. Found:")
-        println("- ${analysisResult.classes.size} classes")
-        println("- ${analysisResult.functions.size} functions")
-        println("- ${analysisResult.conditionalBranches.size} conditional branches")
+        println("- ${enhancedResult.classes.size} classes")
+        println("- ${enhancedResult.functions.size} functions")
+        println("- ${enhancedResult.conditionalBranches.size} conditional branches")
+        println("- ${enhancedResult.variables.size} variables")
+        println("- ${enhancedResult.references.size} references")
+        println("- ${enhancedResult.functionCalls.size} function calls")
+        println("- ${enhancedResult.loops.size} loops")
+        
+        // Print data flow analysis results
+        println("\nData Flow Analysis Results:")
+        println("- ${enhancedResult.definitions.size} variable definitions")
+        println("- ${enhancedResult.uses.size} variable uses")
+        println("- ${enhancedResult.defUsePairs.size} def-use pairs")
+        println("- ${enhancedResult.dataFlowAnomalies.size} data flow anomalies")
+        
+        // Print anomaly breakdown if any exist
+        if (enhancedResult.dataFlowAnomalies.isNotEmpty()) {
+            val anomalyTypes = enhancedResult.dataFlowAnomalies.groupBy { it.anomalyType }
+            println("\nAnomaly Breakdown:")
+            anomalyTypes.forEach { (type, anomalies) ->
+                println("- $type: ${anomalies.size}")
+            }
+        }
         
         // Step 3: Generate test cases with 100% branch coverage
         val testCases = testGenerator.generateTestCases(analysisResult)

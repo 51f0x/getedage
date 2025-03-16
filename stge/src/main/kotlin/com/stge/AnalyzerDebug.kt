@@ -60,8 +60,8 @@ object AnalyzerDebug {
             println("Test file created successfully.")
             println("Running static analyzer...")
             
-            // Run the simplified analyzer instead
-            val analyzer = SimpleStaticAnalyzer()
+            // Use the Kotlin Compiler API analyzer for more accurate results
+            val analyzer = StaticAnalyzer()
             val result = analyzer.analyzeProject(listOf(testFile))
             
             // Print results
