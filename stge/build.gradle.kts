@@ -34,6 +34,12 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.1")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.1")
     testImplementation("org.junit.platform:junit-platform-launcher:1.10.1")
+    implementation("org.mockito:mockito-core:5.8.0")
+    implementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
+    
+    // JUnit Platform Suite for test suites
+    testImplementation("org.junit.platform:junit-platform-suite-api:1.10.1")
+    testRuntimeOnly("org.junit.platform:junit-platform-suite-engine:1.10.1")
     
     // Mockito for mocking in tests
     testImplementation("org.mockito:mockito-core:5.8.0")
