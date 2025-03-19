@@ -15,280 +15,59 @@ fun setUp() {
     testInstance = Showcase()
 }
 
-    @Test
-fun doSomeWorkBasic() {
-    val result = testInstance.doSomeWork(-1, 83)
-    assertNotNull(result)
-}
+        private data class TestData(
+        a: Int,
+        b: Int
+        expectedResult: Int
+    )
+
+    private val testData = TestData(
+        a = -67,
+        b = -72
+        expectedResult = 55
+    )
 
     @Test
-fun testDoSomeWorkWhenNotA19() {
-    val a = 18
-    val b = -90
+    fun doSomeWorkBasic_814512702() {
+        val result = testInstance.doSomeWork(testData.a, testData.b)
+        assertNotNull(result)
+        assertEquals(testData.expectedResult, result)
+    }
 
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
+        private data class TestData(
+        a: Int,
+        b: Int
+        expectedResult: Int
+    )
 
-    @Test
-fun testDoSomeWorkWhenA19() {
-    val a = 20
-    val b = -35
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
+    private val testData = TestData(
+        a = 6,
+        b = -29
+        expectedResult = -66
+    )
 
     @Test
-fun testDoSomeWorkWhenNotB0() {
-    val b = 0Different
-    val a = -49
+    fun doSomeOtherWorkBasic_7558252() {
+        val result = testInstance.doSomeOtherWork(testData.a, testData.b)
+        assertNotNull(result)
+        assertEquals(testData.expectedResult, result)
+    }
 
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
+        private data class TestData(
+        a: Int
+        expectedResult: Int
+    )
 
-    @Test
-fun testDoSomeWorkWhenB0() {
-    val b = 0
-    val a = -80
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
+    private val testData = TestData(
+        a = 2
+        expectedResult = 94
+    )
 
     @Test
-fun testDoSomeWorkWhenNotA19() {
-    val a = 18
-    val b = 89
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenA19() {
-    val a = 20
-    val b = -52
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenNotB0() {
-    val b = 0Different
-    val a = -34
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenB0() {
-    val b = 0
-    val a = 58
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
-
-    @Test
-fun doSomeOtherWorkBasic() {
-    val result = testInstance.doSomeOtherWork(Int.MAX_VALUE, -1)
-    assertNotNull(result)
-}
-
-    @Test
-fun doSomeMoreWorkBasic() {
-    val result = testInstance.doSomeMoreWork(1)
-    assertNotNull(result)
-}
-
-    @Test
-fun doSomeWorkBasic() {
-    val result = testInstance.doSomeWork(1, Int.MIN_VALUE)
-    assertNotNull(result)
-}
-
-    @Test
-fun testDoSomeWorkWhenNotA19() {
-    val a = 18
-    val b = -45
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenA19() {
-    val a = 20
-    val b = -59
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenNotB0() {
-    val b = 0Different
-    val a = 17
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenB0() {
-    val b = 0
-    val a = -67
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenNotA19() {
-    val a = 18
-    val b = -15
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenA19() {
-    val a = 20
-    val b = 79
-
-    // Testing branch coverage for complex condition:
-    // - 'a > 19' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenNotB0() {
-    val b = 0Different
-    val a = 47
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is FALSE
-    // Overall condition evaluates to: false
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result <= 0, "Result should be non-positive when condition is false")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the FALSE branch")
-}
-
-    @Test
-fun testDoSomeWorkWhenB0() {
-    val b = 0
-    val a = 67
-
-    // Testing branch coverage for complex condition:
-    // - 'b == 0' is TRUE
-    // Overall condition evaluates to: true
-    val result = testInstance.doSomeWork(a, b)
-    assertNotNull(result) // Basic verification
-    assertTrue(result >= 0, "Result should be non-negative when condition is true")
-    // Verify that we hit the expected branch
-    assertTrue(true, "Successfully executed the TRUE branch")
-}
-
-    @Test
-fun doSomeOtherWorkBasic() {
-    val result = testInstance.doSomeOtherWork(1, -1)
-    assertNotNull(result)
-}
-
-    @Test
-fun doSomeMoreWorkBasic() {
-    val result = testInstance.doSomeMoreWork(-1)
-    assertNotNull(result)
-}
+    fun doSomeMoreWorkBasic_1595938281() {
+        val result = testInstance.doSomeMoreWork(testData.a)
+        assertNotNull(result)
+        assertEquals(testData.expectedResult, result)
+    }
 
 }

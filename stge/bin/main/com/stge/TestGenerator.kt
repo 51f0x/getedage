@@ -191,86 +191,103 @@ class TestGenerator {
         setupCode: String? = null
     ): List<TestCase> {
         val testCases = mutableListOf<TestCase>()
+        val processedConditions = mutableSetOf<String>() // Track processed conditions to avoid duplicates
         
         when (branch.type) {
             "if" -> {
-                // Parse complex conditions
                 val conditions = parseComplexCondition(branch.condition)
+                // Generate only unique combinations that lead to different outcomes
+                val uniqueCombinations = generateUniqueConditionCombinations(conditions)
                 
-                // Generate test cases for each combination of conditions
-                val combinations = generateConditionCombinations(conditions)
-                
-                for (combination in combinations) {
-                    val testCaseName = buildTestCaseName(function.name, combination)
-                    val conditionValue = evaluateConditionCombination(combination)
-                    
-                    val testCase = TestCase(
-                        name = testCaseName,
-                        targetClassName = function.containingClass ?: "TopLevel",
-                        targetFunction = function.name,
-                        fileName = classInfo?.name?.split('.')?.last()?.plus("Test")
-                                ?: "${function.name.capitalize()}Test",
-                        setupCode = setupCode,
-                        testCode = generateBranchTestCodeForCombination(
-                            function,
-                            branch,
-                            combination,
-                            conditionValue,
-                            analysis,
-                            classInfo
-                        ),
-                        imports = generateImportsForTest(function, classInfo)
-                    )
-                    testCases.add(testCase)
+                for (combination in uniqueCombinations) {
+                    val conditionKey = combination.joinToString("|") { "${it.first.expression}=${it.second}" }
+                    if (!processedConditions.contains(conditionKey)) {
+                        processedConditions.add(conditionKey)
+                        val conditionValue = evaluateConditionCombination(combination)
+                        
+                        // Create a unique test class name for this branch
+                        val branchClassName = buildBranchClassName(function.name, combination)
+                        
+                        val testCase = TestCase(
+                            name = "test${function.name.capitalize()}",
+                            targetClassName = function.containingClass ?: "TopLevel",
+                            targetFunction = function.name,
+                            fileName = branchClassName,
+                            setupCode = setupCode,
+                            testCode = generateBranchTestCodeForCombination(
+                                function,
+                                branch,
+                                combination,
+                                conditionValue,
+                                analysis,
+                                classInfo
+                            ),
+                            imports = generateImportsForTest(function, classInfo)
+                        )
+                        testCases.add(testCase)
+                    }
                 }
             }
             "when" -> {
-                // Find child branches representing when entries
+                // Get all entries for this when expression
                 val entries = analysis.conditionalBranches.filter { it.parentBranch == branch }
                 
-                // Generate test for each when entry
+                // Process each entry
                 for (entry in entries) {
-                    val testCase =
-                            TestCase(
-                                    name =
-                                            "test${function.name.capitalize()}When${entry.condition.toValidMethodName()}",
-                        targetClassName = function.containingClass ?: "TopLevel",
-                        targetFunction = function.name,
-                                    fileName = classInfo?.name?.split('.')?.last()?.plus("Test")
-                                                    ?: "${function.name.capitalize()}Test",
-                        setupCode = setupCode,
-                                    testCode =
-                                            generateWhenEntryTestCode(
-                                                    function,
-                                                    branch,
-                                                    entry,
-                                                    analysis,
-                                                    classInfo
-                                            ),
-                        imports = generateImportsForTest(function, classInfo)
-                    )
-                    testCases.add(testCase)
+                    val conditionKey = "when_${entry.condition}"
+                    if (!processedConditions.contains(conditionKey)) {
+                        processedConditions.add(conditionKey)
+                        
+                        // Create a unique test class name for this when entry
+                        val branchClassName = buildWhenBranchClassName(function.name, entry)
+                        
+                        // Generate test for this when entry
+                        val testCase = TestCase(
+                            name = "test${function.name.capitalize()}",
+                            targetClassName = function.containingClass ?: "TopLevel",
+                            targetFunction = function.name,
+                            fileName = branchClassName,
+                            setupCode = setupCode,
+                            testCode = generateWhenEntryTestCode(
+                                function,
+                                branch,
+                                entry,
+                                analysis,
+                                classInfo
+                            ),
+                            imports = generateImportsForTest(function, classInfo)
+                        )
+                        testCases.add(testCase)
+                    }
                 }
                 
-                // Also generate a test for the else branch if it exists
+                // Check if we need an else branch test
                 if (!entries.any { it.condition == "else" }) {
-                    val elseTestCase = TestCase(
-                        name = "test${function.name.capitalize()}WhenElseBranch",
-                        targetClassName = function.containingClass ?: "TopLevel",
-                        targetFunction = function.name,
-                        fileName = classInfo?.name?.split('.')?.last()?.plus("Test")
-                                ?: "${function.name.capitalize()}Test",
-                        setupCode = setupCode,
-                        testCode = generateWhenElseTestCode(
-                            function,
-                            branch,
-                            entries,
-                            analysis,
-                            classInfo
-                        ),
-                        imports = generateImportsForTest(function, classInfo)
-                    )
-                    testCases.add(elseTestCase)
+                    val elseKey = "when_else"
+                    if (!processedConditions.contains(elseKey)) {
+                        processedConditions.add(elseKey)
+                        
+                        // Create a unique test class name for the else branch
+                        val branchClassName = buildWhenElseBranchClassName(function.name, branch)
+                        
+                        // Generate test for the else branch
+                        val elseTestCase = TestCase(
+                            name = "test${function.name.capitalize()}",
+                            targetClassName = function.containingClass ?: "TopLevel",
+                            targetFunction = function.name,
+                            fileName = branchClassName,
+                            setupCode = setupCode,
+                            testCode = generateWhenElseTestCode(
+                                function,
+                                branch,
+                                entries,
+                                analysis,
+                                classInfo
+                            ),
+                            imports = generateImportsForTest(function, classInfo)
+                        )
+                        testCases.add(elseTestCase)
+                    }
                 }
             }
         }
@@ -278,6 +295,46 @@ class TestGenerator {
         return testCases
     }
     
+    /** Generates unique combinations of conditions that lead to different outcomes */
+    private fun generateUniqueConditionCombinations(conditions: List<Condition>): List<List<Pair<Condition, Boolean>>> {
+        if (conditions.isEmpty()) return emptyList()
+        
+        val uniqueCombinations = mutableListOf<List<Pair<Condition, Boolean>>>()
+        val processedOutcomes = mutableSetOf<Boolean>()
+        
+        // Generate combinations until we have both true and false outcomes
+        var attempts = 0
+        val maxAttempts = 100 // Prevent infinite loops
+        
+        while (processedOutcomes.size < 2 && attempts < maxAttempts) {
+            val combination = mutableListOf<Pair<Condition, Boolean>>()
+            for (condition in conditions) {
+                // For each condition, try to generate a value that will help achieve our goal
+                val value = if (processedOutcomes.isEmpty()) {
+                    // If we haven't achieved any outcome yet, try true
+                    true
+                } else if (processedOutcomes.contains(true)) {
+                    // If we have true, try false
+                    false
+                } else {
+                    // If we have false, try true
+                    true
+                }
+                combination.add(condition to value)
+            }
+            
+            val outcome = evaluateConditionCombination(combination)
+            if (!processedOutcomes.contains(outcome)) {
+                processedOutcomes.add(outcome)
+                uniqueCombinations.add(combination)
+            }
+            
+            attempts++
+        }
+        
+        return uniqueCombinations
+    }
+
     /** Generates parameter values for a function call, handling varargs appropriately. */
     private fun generateParameterValues(function: FunctionInfo): String {
         return function.parameters
@@ -368,24 +425,43 @@ class TestGenerator {
     /** Generates basic test code for a function. */
     private fun generateBasicTestCode(function: FunctionInfo, analysis: AnalysisResult): String {
         val sb = StringBuilder()
-        sb.appendLine("@Test")
-        sb.appendLine("fun ${function.name}Basic() {")
         
-        // Generate parameter values
-        val paramValues = generateParameterValues(function)
-        
-        // Call the function
+        // Generate test data class
+        sb.appendLine("    private data class TestData(")
+        val params = function.parameters.map { "${it.name}: ${it.type}" }.joinToString(",\n        ")
+        sb.appendLine("        $params")
         if (function.returnType != "Unit") {
-            sb.appendLine("    val result = ${function.name}($paramValues)")
-            sb.appendLine("    assertNotNull(result) // Basic coverage check")
+            sb.appendLine("        expectedResult: ${function.returnType}")
+        }
+        sb.appendLine("    )")
+        sb.appendLine()
+        
+        // Generate test data
+        sb.appendLine("    private val testData = TestData(")
+        val paramValues = function.parameters.map { "${it.name} = ${generateValueForType(it.type)}" }.joinToString(",\n        ")
+        sb.appendLine("        $paramValues")
+        if (function.returnType != "Unit") {
+            sb.appendLine("        expectedResult = ${generateValueForType(function.returnType)}")
+        }
+        sb.appendLine("    )")
+        sb.appendLine()
+        
+        // Generate test method
+        sb.appendLine("    @Test")
+        val hash = (function.name + "Basic").hashCode().toString().replace("-", "")
+        sb.appendLine("    fun ${function.name}Basic_$hash() {")
+        
+        // Call the function using test data
+        if (function.returnType != "Unit") {
+            sb.appendLine("        val result = ${function.name}(testData.${function.parameters.joinToString(", testData.") { it.name }})")
+            sb.appendLine("        assertNotNull(result) // Basic coverage check")
+            sb.appendLine("        assertEquals(testData.expectedResult, result)")
         } else {
-            sb.appendLine("    ${function.name}($paramValues)")
-            sb.appendLine(
-                    "    // Basic coverage verification - ensures function executes without exceptions"
-            )
+            sb.appendLine("        ${function.name}(testData.${function.parameters.joinToString(", testData.") { it.name }})")
+            sb.appendLine("        // Basic coverage verification - ensures function executes without exceptions")
         }
         
-        sb.appendLine("}")
+        sb.appendLine("    }")
         return sb.toString()
     }
     
@@ -396,387 +472,149 @@ class TestGenerator {
         analysis: AnalysisResult
     ): String {
         val sb = StringBuilder()
-        sb.appendLine("@Test")
-        sb.appendLine("fun ${function.name}Basic() {")
         
-        // Generate parameter values
-        val paramValues = generateParameterValues(function)
-        
-        // Call the method on the instance
+        // Generate test data class
+        sb.appendLine("    private data class TestData(")
+        val params = function.parameters.map { "${it.name}: ${it.type}" }.joinToString(",\n        ")
+        sb.appendLine("        $params")
         if (function.returnType != "Unit") {
-            sb.appendLine("    val result = testInstance.${function.name}($paramValues)")
-            sb.appendLine("    assertNotNull(result)")
+            sb.appendLine("        expectedResult: ${function.returnType}")
+        }
+        sb.appendLine("    )")
+        sb.appendLine()
+        
+        // Generate test data
+        sb.appendLine("    private val testData = TestData(")
+        val paramValues = function.parameters.map { "${it.name} = ${generateValueForType(it.type)}" }.joinToString(",\n        ")
+        sb.appendLine("        $paramValues")
+        if (function.returnType != "Unit") {
+            sb.appendLine("        expectedResult = ${generateValueForType(function.returnType)}")
+        }
+        sb.appendLine("    )")
+        sb.appendLine()
+        
+        // Generate test method
+        sb.appendLine("    @Test")
+        val hash = (function.name + "Basic").hashCode().toString().replace("-", "")
+        sb.appendLine("    fun ${function.name}Basic_$hash() {")
+        
+        // Call the method using test data
+        if (function.returnType != "Unit") {
+            sb.appendLine("        val result = testInstance.${function.name}(testData.${function.parameters.joinToString(", testData.") { it.name }})")
+            sb.appendLine("        assertNotNull(result)")
+            sb.appendLine("        assertEquals(testData.expectedResult, result)")
         } else {
-            sb.appendLine("    testInstance.${function.name}($paramValues)")
-            sb.appendLine("    // Verify no exceptions were thrown")
+            sb.appendLine("        testInstance.${function.name}(testData.${function.parameters.joinToString(", testData.") { it.name }})")
+            sb.appendLine("        // Verify no exceptions were thrown")
         }
         
-        sb.appendLine("}")
+        sb.appendLine("    }")
         return sb.toString()
     }
     
     /** Generates branch test code ensuring coverage of all conditions with specific assertions */
-    private fun generateBranchTestCode(
+    private fun generateBranchTestCodeForCombination(
         function: FunctionInfo,
         branch: ConditionalBranchInfo,
+        combination: List<Pair<Condition, Boolean>>,
         conditionValue: Boolean,
         analysis: AnalysisResult,
-        classInfo: ClassInfo? = null
+        classInfo: ClassInfo? = null,
+        setupCode: String? = null
     ): String {
         val sb = StringBuilder()
-        sb.appendLine("@Test")
-        sb.appendLine(
-                "fun ${function.name}When${branch.condition.toValidMethodName()}${if (conditionValue) "True" else "False"}() {"
-        )
         
-        // Set up parameters that would make the condition evaluate to the desired value
+        // Generate test data class
+        sb.appendLine("    private data class TestData(")
+        val params = function.parameters.map { "${it.name}: ${it.type}" }.joinToString(",\n        ")
+        sb.appendLine("        $params")
+        if (function.returnType != "Unit") {
+            sb.appendLine("        expectedResult: ${function.returnType}")
+        }
+        sb.appendLine("    )")
+        sb.appendLine()
+        
+        // Set up parameters for each condition
         val paramSetups = mutableListOf<String>()
-        for (param in function.parameters) {
-            val paramName = param.name
-            val paramType = param.type
-            
-            // Check if this parameter is used in the condition
-            if (branch.condition.contains(paramName)) {
-                if (conditionValue) {
-                    // Try to make it true
-                    when {
-                        paramType.contains("Boolean") -> paramSetups.add("val $paramName = true")
-                        paramType.contains("Int") || paramType.contains("Long") -> {
-                            if (branch.condition.contains("$paramName > ")) {
-                                paramSetups.add("val $paramName = 100") // A large value
-                            } else if (branch.condition.contains("$paramName < ")) {
-                                paramSetups.add("val $paramName = 0") // A small value
-                            } else if (branch.condition.contains("$paramName ==")) {
-                                // Extract the value it's compared to
-                                val parts = branch.condition.split("==")
-                                if (parts.size > 1) {
-                                    val valueStr = parts[1].trim()
-                                    paramSetups.add("val $paramName = $valueStr")
-                                } else {
-                                    paramSetups.add("val $paramName = 1")
-                                }
-                            } else {
-                                paramSetups.add("val $paramName = 1")
-                            }
-                        }
-                        paramType.contains("String") -> {
-                            if (branch.condition.contains("$paramName.is")) {
-                                paramSetups.add("val $paramName = \"test\"")
-                            } else if (branch.condition.contains("$paramName ==")) {
-                                // Extract the value it's compared to
-                                val parts = branch.condition.split("==")
-                                if (parts.size > 1) {
-                                    val valueStr = parts[1].trim().replace("\"", "\\\"")
-                                    paramSetups.add("val $paramName = \"$valueStr\"")
-                                } else {
-                                    paramSetups.add("val $paramName = \"test value\"")
-                                }
-                            } else {
-                                paramSetups.add("val $paramName = \"non-empty string\"")
-                            }
-                        }
-                        else ->
-                                paramSetups.add(
-                                        "val $paramName = ${generateValueForType(paramType)}"
-                                )
-                    }
-                } else {
-                    // Try to make it false
-                    when {
-                        paramType.contains("Boolean") -> paramSetups.add("val $paramName = false")
-                        paramType.contains("Int") || paramType.contains("Long") -> {
-                            if (branch.condition.contains("$paramName > ")) {
-                                paramSetups.add("val $paramName = 0") // A small value
-                            } else if (branch.condition.contains("$paramName < ")) {
-                                paramSetups.add("val $paramName = 100") // A large value
-                            } else if (branch.condition.contains("$paramName ==")) {
-                                // Choose a different value than the one it's compared to
-                                paramSetups.add("val $paramName = -1")
-                            } else {
-                                paramSetups.add("val $paramName = 0")
-                            }
-                        }
-                        paramType.contains("String") -> {
-                            if (branch.condition.contains("$paramName.is")) {
-                                paramSetups.add("val $paramName = \"\"")
-                            } else if (branch.condition.contains("$paramName ==")) {
-                                paramSetups.add("val $paramName = \"different value\"")
-                            } else {
-                                paramSetups.add("val $paramName = \"\"")
-                            }
-                        }
-                        else -> paramSetups.add("val $paramName = null")
-                    }
+        val seenParams = mutableSetOf<String>()
+        
+        for ((condition, value) in combination) {
+            val params = extractParametersFromCondition(condition.expression)
+            for (param in params) {
+                if (!seenParams.contains(param.name)) {
+                    seenParams.add(param.name)
+                    paramSetups.addAll(generateParamSetupForCondition(param, condition.expression, value xor condition.isNegated))
                 }
-            } else {
-                // Just use a default value
-                paramSetups.add("val $paramName = ${generateValueForType(paramType)}")
             }
         }
         
-        // Add parameter setups
-        for (setup in paramSetups) {
-            sb.appendLine("    $setup")
+        // Set up remaining parameters with default values
+        for (param in function.parameters) {
+            if (!seenParams.contains(param.name)) {
+                paramSetups.add("${param.name} = ${generateValueForType(param.type)}")
+            }
         }
+        
+        // Generate test data
+        sb.appendLine("    private val testData = TestData(")
+        sb.appendLine("        ${paramSetups.joinToString(",\n        ")}")
+        if (function.returnType != "Unit") {
+            sb.appendLine("        expectedResult = ${generateValueForType(function.returnType)}")
+        }
+        sb.appendLine("    )")
         sb.appendLine()
-
-        // Add code comment to highlight branch coverage purpose
-        sb.appendLine(
-                "    // Testing branch coverage for condition: '${branch.condition}' is ${if (conditionValue) "TRUE" else "FALSE"}"
-        )
         
-        // Call the function with the parameters
-        val paramCalls = function.parameters.joinToString(", ") { it.name }
+        // Add test method
+        sb.appendLine("    @Test")
+        sb.appendLine("    fun test${function.name.capitalize()}() {")
         
-        // Generate branch-specific assertions based on the branch condition and expected behavior
-        val branchSpecificAssertions =
-                generateBranchSpecificAssertions(function, branch, conditionValue, paramCalls)
-
+        // Add code comment explaining the test case
+        sb.appendLine("        // Testing branch coverage for complex condition:")
+        for ((condition, value) in combination) {
+            sb.appendLine("        // - '${condition.expression}' is ${if (value xor condition.isNegated) "TRUE" else "FALSE"}")
+        }
+        sb.appendLine("        // Overall condition evaluates to: $conditionValue")
+        
+        // Call the function with parameters
+        val paramCalls = function.parameters.joinToString(", ") { "testData.${it.name}" }
+        
+        // Generate assertions based on the condition combination
+        val assertions = generateAssertionsForCombination(function, branch, combination, conditionValue)
+        
         if (classInfo != null) {
             // Method in a class
             if (function.returnType != "Unit") {
-                sb.appendLine("    val result = testInstance.${function.name}($paramCalls)")
-
-                // Add branch-specific assertions for class methods with return values
-                for (assertion in branchSpecificAssertions) {
-                    sb.appendLine("    $assertion")
+                sb.appendLine("        val result = testInstance.${function.name}($paramCalls)")
+                for (assertion in assertions) {
+                    sb.appendLine("        $assertion")
                 }
+                sb.appendLine("        assertEquals(testData.expectedResult, result)")
             } else {
-                sb.appendLine("    testInstance.${function.name}($paramCalls)")
-
-                // Add branch-specific assertions for void class methods
-                for (assertion in branchSpecificAssertions) {
-                    sb.appendLine("    $assertion")
+                sb.appendLine("        testInstance.${function.name}($paramCalls)")
+                for (assertion in assertions) {
+                    sb.appendLine("        $assertion")
                 }
             }
         } else {
             // Top-level function
             if (function.returnType != "Unit") {
-                sb.appendLine("    val result = ${function.name}($paramCalls)")
-
-                // Add branch-specific assertions for top-level functions with return values
-                for (assertion in branchSpecificAssertions) {
-                    sb.appendLine("    $assertion")
+                sb.appendLine("        val result = ${function.name}($paramCalls)")
+                for (assertion in assertions) {
+                    sb.appendLine("        $assertion")
                 }
+                sb.appendLine("        assertEquals(testData.expectedResult, result)")
             } else {
-                sb.appendLine("    ${function.name}($paramCalls)")
-
-                // Add branch-specific assertions for void top-level functions
-                for (assertion in branchSpecificAssertions) {
-                    sb.appendLine("    $assertion")
+                sb.appendLine("        ${function.name}($paramCalls)")
+                for (assertion in assertions) {
+                    sb.appendLine("        $assertion")
                 }
             }
         }
         
-        sb.appendLine("}")
+        sb.appendLine("    }")
         return sb.toString()
     }
     
-    /**
-     * Generates specific assertions for branch verification based on branch condition and
-     * parameters
-     */
-    private fun generateBranchSpecificAssertions(
-            function: FunctionInfo,
-            branch: ConditionalBranchInfo,
-            conditionValue: Boolean,
-            paramCalls: String
-    ): List<String> {
-        val assertions = mutableListOf<String>()
-
-        // First make sure we have a basic assertion
-        if (function.returnType != "Unit") {
-            assertions.add("assertNotNull(result) // Basic verification")
-        }
-
-        // Extract the primary parameter involved in the condition
-        val paramName = extractPrimaryParameterFromCondition(branch.condition)
-
-        // Generate appropriate assertions based on the function's return type and branch condition
-        when {
-            // For numeric return types, generate assertions that check specific numeric conditions
-            function.returnType.contains("Int") ||
-                    function.returnType.contains("Long") ||
-                    function.returnType.contains("Double") ||
-                    function.returnType.contains("Float") -> {
-                if (branch.condition.contains(">")) {
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertTrue(result > 0, \"Expected positive result for condition '${branch.condition}'\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertTrue(result <= 0, \"Expected non-positive result for condition '${branch.condition}'\")"
-                        )
-                    }
-                } else if (branch.condition.contains("<")) {
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertTrue(result < 100, \"Expected small result for condition '${branch.condition}'\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertTrue(result >= 100, \"Expected large result for condition '${branch.condition}'\")"
-                        )
-                    }
-                } else if (branch.condition.contains("==") && paramName != null) {
-                    // Check for specific equality conditions
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertEquals($paramName, result, \"Result should match parameter for condition '${branch.condition}'\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertNotEquals($paramName, result, \"Result should not match parameter for condition '${branch.condition}'\")"
-                        )
-                    }
-                } else {
-                    // Generic numeric assertion
-                    assertions.add(
-                            "// Verify result is appropriate for branch: ${branch.condition} = ${conditionValue}"
-                    )
-                    assertions.add("// For example:")
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertTrue(result >= 0, \"Expected non-negative result for TRUE condition\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertTrue(result >= 0, \"Expected appropriate result for FALSE condition\")"
-                        )
-                    }
-                }
-            }
-
-            // For string return types
-            function.returnType.contains("String") -> {
-                if (branch.condition.contains(".isEmpty()") ||
-                                branch.condition.contains(".isBlank()")
-                ) {
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertTrue(result.isNotEmpty(), \"Expected non-empty result for condition '${branch.condition}'\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertTrue(result.contains(\"empty\") || result.isEmpty(), \"Result should indicate emptiness for FALSE branch\")"
-                        )
-                    }
-                } else if (branch.condition.contains("==") && paramName != null) {
-                    // Check for specific string equality
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertTrue(result.contains($paramName), \"Result should contain parameter value for TRUE condition\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertFalse(result.contains($paramName), \"Result should not contain parameter value for FALSE condition\")"
-                        )
-                    }
-                } else {
-                    // Generic string assertion
-                    if (branch.type == "if" && branch.condition.contains("==")) {
-                        val expectedValue = extractExpectedValueFromCondition(branch.condition)
-                        if (expectedValue != null) {
-                            if (conditionValue) {
-                                assertions.add(
-                                        "assertTrue(result.contains(\"$expectedValue\"), \"Result should reflect TRUE branch\")"
-                                )
-                            } else {
-                                assertions.add(
-                                        "assertFalse(result.contains(\"$expectedValue\"), \"Result should reflect FALSE branch\")"
-                                )
-                            }
-                        } else {
-                            assertions.add(
-                                    "assertNotNull(result, \"Result should be valid for branch: ${branch.condition} = ${conditionValue}\")"
-                            )
-                        }
-                    } else {
-                        assertions.add(
-                                "assertNotNull(result, \"Result should be valid for branch: ${branch.condition} = ${conditionValue}\")"
-                        )
-                    }
-                }
-            }
-
-            // For boolean return types
-            function.returnType.contains("Boolean") -> {
-                if (branch.condition.contains("==") ||
-                                branch.condition.contains(">") ||
-                                branch.condition.contains("<")
-                ) {
-                    // For direct condition checks
-                    if (conditionValue) {
-                        assertions.add(
-                                "assertTrue(result, \"Expected TRUE result for TRUE branch condition\")"
-                        )
-                    } else {
-                        assertions.add(
-                                "assertFalse(result, \"Expected FALSE result for FALSE branch condition\")"
-                        )
-                    }
-                } else {
-                    // Generic boolean assertion
-                    assertions.add(
-                            "assertEquals(${conditionValue}, result, \"Result should match condition state\")"
-                    )
-                }
-            }
-
-            // For exception cases
-            branch.condition.contains("throws") || branch.condition.contains("exception") -> {
-                assertions.add(
-                        "// This test verifies the code does not throw an exception when ${if(conditionValue) "TRUE" else "FALSE"}"
-                )
-                assertions.add(
-                        "// No assertion needed as the test would fail if exception was thrown"
-                )
-            }
-
-            // For void functions that may have side effects
-            function.returnType == "Unit" -> {
-                assertions.add(
-                        "// For void methods, verify that the method executed without exceptions"
-                )
-                assertions.add(
-                        "// This confirms the ${if(conditionValue) "TRUE" else "FALSE"} branch was taken"
-                )
-                assertions.add(
-                        "// In a real test, add assertions to check any side effects caused by this branch"
-                )
-            }
-
-            // Fall back for other return types
-            else -> {
-                assertions.add(
-                        "assertNotNull(result, \"Result should be valid for branch: ${branch.condition} = ${conditionValue}\")"
-                )
-                assertions.add("// Specific assertion for this branch: ${branch.condition}")
-                assertions.add(
-                        "// Add additional assertions based on expected behavior in this branch"
-                )
-            }
-        }
-
-        return assertions
-    }
-
-    /** Extracts the primary parameter name from a condition */
-    private fun extractPrimaryParameterFromCondition(condition: String): String? {
-        // Match patterns like "paramName > 5" or "paramName.isEmpty()"
-        val paramPattern = """(\w+)(?:\s*[><=!]+|\s*\.\w+\(\))""".toRegex()
-        val match = paramPattern.find(condition)
-        return match?.groupValues?.get(1)
-    }
-
-    /** Extracts the expected value from a condition like "x == 5" -> "5" */
-    private fun extractExpectedValueFromCondition(condition: String): String? {
-        val equalityPattern = """\w+\s*==\s*["']?([^"']+?)["']?${'$'}""".toRegex()
-        val match = equalityPattern.find(condition)
-        return match?.groupValues?.get(1)?.trim()
-    }
-
     /**
      * Generates when entry test code ensuring coverage of all conditions with specific assertions
      */
@@ -789,7 +627,15 @@ class TestGenerator {
     ): String {
         val sb = StringBuilder()
         sb.appendLine("@Test")
-        sb.appendLine("fun ${function.name}When${entry.condition.toValidMethodName()}() {")
+        // Generate hash before using it
+        val hash = (function.name + entry.condition).hashCode().toString().replace("-", "")
+        
+        // Include parent condition in test name if it exists
+        val parentConditionPart = whenBranch.parentBranch?.let { parent ->
+            "WithParent${parent.condition.toValidMethodName()}"
+        } ?: ""
+        
+        sb.appendLine("fun ${function.name}When${entry.condition.toValidMethodName()}${parentConditionPart}_$hash() {")
         
         // Extract the subject of the when expression
         val subjectName = whenBranch.condition
@@ -798,6 +644,16 @@ class TestGenerator {
         val subjectParam = function.parameters.find { it.name == subjectName }
         
         val paramSetups = mutableListOf<String>()
+        
+        // First set up parent condition parameters if they exist
+        whenBranch.parentBranch?.let { parent ->
+            val parentParams = extractParametersFromCondition(parent.condition)
+            for (param in parentParams) {
+                if (!paramSetups.any { it.startsWith("val ${param.name} =") }) {
+                    paramSetups.addAll(generateParamSetupForCondition(param, parent.condition, true))
+                }
+            }
+        }
         
         if (subjectParam != null) {
             // Set up the parameter to match this entry's condition
@@ -840,7 +696,7 @@ class TestGenerator {
         
         // Set up other parameters with default values
         for (param in function.parameters) {
-            if (param.name != subjectName) {
+            if (param.name != subjectName && !paramSetups.any { it.startsWith("val ${param.name} =") }) {
                 paramSetups.add("val ${param.name} = ${generateValueForType(param.type)}")
             }
         }
@@ -852,9 +708,10 @@ class TestGenerator {
         sb.appendLine()
 
         // Add code comment to highlight branch coverage purpose
-        sb.appendLine(
-                "    // Testing when branch coverage for value: '${entry.condition}' in when expression on '$subjectName'"
-        )
+        sb.appendLine("    // Testing when branch coverage for value: '${entry.condition}' in when expression on '$subjectName'")
+        whenBranch.parentBranch?.let { parent ->
+            sb.appendLine("    // With parent condition: '${parent.condition}'")
+        }
         
         // Call the function with the parameters
         val paramCalls = function.parameters.joinToString(", ") { it.name }
@@ -924,6 +781,12 @@ class TestGenerator {
             assertions.add(
                     "assertNotNull(result, \"Result should not be null for when branch '$branchCondition'\")"
             )
+        }
+
+        // Add assertions for parent condition if it exists
+        whenBranch.parentBranch?.let { parent ->
+            assertions.add("// Verify parent condition: '${parent.condition}'")
+            assertions.add("// Parent condition should be true for this test case")
         }
 
         // Generate assertions based on expected behavior for different when branches
@@ -1110,181 +973,6 @@ class TestGenerator {
         return imports
     }
     
-    /** Generates a value for a given type. */
-    private fun generateValueForType(type: String, depth: Int = 0): String {
-        // Prevent infinite recursion
-        if (depth > 3) {
-            return when {
-                type.contains("List") || type.contains("Collection") -> "emptyList()"
-                type.contains("Map") -> "emptyMap()"
-                type.contains("Set") -> "emptySet()"
-                type.contains("Array") -> "emptyArray()"
-                else -> generateSimpleValue(type)
-            }
-        }
-
-        return when {
-            type.contains("Int") -> {
-                // Generate a list of interesting values including boundaries
-                val values = listOf(
-                    "0",                    // Zero
-                    "1",                    // One
-                    "-1",                   // Negative one
-                    "Int.MAX_VALUE",        // Maximum value
-                    "Int.MIN_VALUE",        // Minimum value
-                    "(Int.MAX_VALUE - 1)",  // Near maximum
-                    "(Int.MIN_VALUE + 1)",  // Near minimum
-                    Random.nextInt(1, 100).toString() // Random value
-                )
-                values.random()
-            }
-            type.contains("Long") -> {
-                val values = listOf(
-                    "0L",
-                    "1L",
-                    "-1L",
-                    "Long.MAX_VALUE",
-                    "Long.MIN_VALUE",
-                    "(Long.MAX_VALUE - 1L)",
-                    "(Long.MIN_VALUE + 1L)",
-                    "${Random.nextLong(1, 100)}L"
-                )
-                values.random()
-            }
-            type.contains("Double") -> {
-                val values = listOf(
-                    "0.0",
-                    "1.0",
-                    "-1.0",
-                    "Double.MAX_VALUE",
-                    "Double.MIN_VALUE",
-                    "Double.POSITIVE_INFINITY",
-                    "Double.NEGATIVE_INFINITY",
-                    "Double.NaN",
-                    Random.nextDouble(1.0, 100.0).toString()
-                )
-                values.random()
-            }
-            type.contains("Float") -> {
-                val values = listOf(
-                    "0.0f",
-                    "1.0f",
-                    "-1.0f",
-                    "Float.MAX_VALUE",
-                    "Float.MIN_VALUE",
-                    "Float.POSITIVE_INFINITY",
-                    "Float.NEGATIVE_INFINITY",
-                    "Float.NaN",
-                    "${Random.nextFloat()}f"
-                )
-                values.random()
-            }
-            type.contains("Boolean") -> {
-                listOf("true", "false").random()
-            }
-            type.contains("String") -> {
-                val values = listOf(
-                    "\"\"",                     // Empty string
-                    "\" \"",                    // Space
-                    "\"test${Random.nextInt(100)}\"", // Random string
-                    "\"a\"",                    // Single character
-                    "\"\\n\"",                  // Newline
-                    "\"\\t\"",                  // Tab
-                    "\"\\\"\"",                 // Quote
-                    "\"${"\u0000"}\"",         // Null character
-                    "\"${"a".repeat(1000)}\"",  // Very long string
-                    "\"${Random.nextBytes(10).joinToString("")}\"" // Random bytes
-                )
-                values.random()
-            }
-            type.contains("List") || type.contains("Collection") -> {
-                val innerType = type.substringAfter("<").substringBefore(">")
-                val values = listOf(
-                    "emptyList()",  // Empty list
-                    "listOf(${generateValueForType(innerType, depth + 1)})", // Single element
-                    "listOf(${(1..3).joinToString { generateValueForType(innerType, depth + 1) }})", // Multiple elements
-                    "List(3) { ${generateValueForType(innerType, depth + 1)} }" // Fixed size list
-                )
-                values.random()
-            }
-            type.contains("Map") -> {
-                val parts = type.substringAfter("<").substringBefore(">").split(",")
-                if (parts.size == 2) {
-                    val keyType = parts[0].trim()
-                    val valueType = parts[1].trim()
-                    val values = listOf(
-                        "emptyMap()", // Empty map
-                        "mapOf(${generateValueForType(keyType)} to ${generateValueForType(valueType)})", // Single entry
-                        "mapOf(${(1..3).joinToString { "${generateValueForType(keyType)} to ${generateValueForType(valueType)}" }})" // Multiple entries
-                    )
-                    values.random()
-                } else {
-                    "emptyMap()"
-                }
-            }
-            type.contains("Set") -> {
-                val innerType = type.substringAfter("<").substringBefore(">")
-                val values = listOf(
-                    "emptySet()",  // Empty set
-                    "setOf(${generateValueForType(innerType)})", // Single element
-                    "setOf(${(1..3).joinToString { generateValueForType(innerType) }})", // Multiple elements
-                    "Set(10) { ${generateValueForType(innerType)} }" // Large set
-                )
-                values.random()
-            }
-            type.contains("Array") -> {
-                val innerType = type.substringAfter("<").substringBefore(">")
-                val values = listOf(
-                    "emptyArray()", // Empty array
-                    "arrayOf(${generateValueForType(innerType)})", // Single element
-                    "arrayOf(${(1..3).joinToString { generateValueForType(innerType) }})", // Multiple elements
-                    "Array(10) { ${generateValueForType(innerType)} }" // Large array
-                )
-                values.random()
-            }
-            type.contains("Function") || type.contains("()->") -> {
-                val returnType = type.substringAfter("->").trim()
-                "{ ${generateLambdaBody(returnType)} }"
-            }
-            type.contains("?") -> {
-                // For nullable types, sometimes return null, sometimes a value
-                if (Random.nextBoolean()) "null" else generateValueForType(type.removeSuffix("?"))
-            }
-            else -> generateSimpleValue(type)
-        }
-    }
-    
-    /** Generates a lambda body for a function type. */
-    private fun generateLambdaBody(type: String): String {
-        // Extract return type from function type, e.g., "() -> Int" -> "Int"
-        val returnType = type.substringAfter("->").trim()
-        
-        return when {
-            returnType.contains("Int") -> "0"
-            returnType.contains("Long") -> "0L"
-            returnType.contains("Double") -> "0.0"
-            returnType.contains("Float") -> "0.0f"
-            returnType.contains("Boolean") -> "false"
-            returnType.contains("String") -> "\"\""
-            returnType.contains("Unit") -> ""
-            else -> "null"
-        }
-    }
-    
-    /** Generates a simple value for a given type. */
-    private fun generateSimpleValue(type: String): String {
-        return when {
-            type.contains("Int") -> "0"
-            type.contains("Long") -> "0L"
-            type.contains("Double") -> "0.0"
-            type.contains("Float") -> "0.0f"
-            type.contains("Boolean") -> "false"
-            type.contains("String") -> "\"\""
-            type.contains("?") -> "null"
-            else -> "mock()"
-        }
-    }
-
     /** Writes test cases to files. */
     fun writeTestFiles(testCases: List<TestCase>, testDir: File) {
         // Group test cases by file name
@@ -1368,10 +1056,21 @@ class TestGenerator {
                     writer.write("\n")
                 }
                 
+                // Track unique test methods to avoid duplicates
+                val uniqueTestMethods = mutableSetOf<String>()
+                
                 // Write test methods
                 for (testCase in cases) {
-                    writer.write("    ${testCase.testCode}")
-                    writer.write("\n")
+                    // Extract the test method name from the test code
+                    val methodNameMatch = Regex("@Test\\s*fun\\s+(\\w+)\\s*\\(").find(testCase.testCode)
+                    if (methodNameMatch != null) {
+                        val methodName = methodNameMatch.groupValues[1]
+                        if (!uniqueTestMethods.contains(methodName)) {
+                            uniqueTestMethods.add(methodName)
+                            writer.write("    ${testCase.testCode}")
+                            writer.write("\n")
+                        }
+                    }
                 }
                 
                 // Close the class
@@ -1493,91 +1192,9 @@ private fun buildTestCaseName(functionName: String, combination: List<Pair<Condi
             if (value) baseCondition else "Not$baseCondition"
         }
     }
-    return "test${functionName.capitalize()}When$conditionNames"
-}
-
-private fun generateBranchTestCodeForCombination(
-    function: FunctionInfo,
-    branch: ConditionalBranchInfo,
-    combination: List<Pair<Condition, Boolean>>,
-    conditionValue: Boolean,
-    analysis: AnalysisResult,
-    classInfo: ClassInfo? = null
-): String {
-    val sb = StringBuilder()
-    sb.appendLine("@Test")
-    sb.appendLine("fun ${buildTestCaseName(function.name, combination)}() {")
-    
-    // Set up parameters for each condition
-    val paramSetups = mutableListOf<String>()
-    val seenParams = mutableSetOf<String>()
-    
-    for ((condition, value) in combination) {
-        val params = extractParametersFromCondition(condition.expression)
-        for (param in params) {
-            if (!seenParams.contains(param.name)) {
-                seenParams.add(param.name)
-                paramSetups.addAll(generateParamSetupForCondition(param, condition.expression, value xor condition.isNegated))
-            }
-        }
-    }
-    
-    // Set up remaining parameters with default values
-    for (param in function.parameters) {
-        if (!seenParams.contains(param.name)) {
-            paramSetups.add("val ${param.name} = ${generateValueForType(param.type)}")
-        }
-    }
-    
-    // Add parameter setups
-    for (setup in paramSetups) {
-        sb.appendLine("    $setup")
-    }
-    sb.appendLine()
-    
-    // Add code comment explaining the test case
-    sb.appendLine("    // Testing branch coverage for complex condition:")
-    for ((condition, value) in combination) {
-        sb.appendLine("    // - '${condition.expression}' is ${if (value xor condition.isNegated) "TRUE" else "FALSE"}")
-    }
-    sb.appendLine("    // Overall condition evaluates to: $conditionValue")
-    
-    // Call the function with parameters
-    val paramCalls = function.parameters.joinToString(", ") { it.name }
-    
-    // Generate assertions based on the condition combination
-    val assertions = generateAssertionsForCombination(function, branch, combination, conditionValue)
-    
-    if (classInfo != null) {
-        // Method in a class
-        if (function.returnType != "Unit") {
-            sb.appendLine("    val result = testInstance.${function.name}($paramCalls)")
-            for (assertion in assertions) {
-                sb.appendLine("    $assertion")
-            }
-        } else {
-            sb.appendLine("    testInstance.${function.name}($paramCalls)")
-            for (assertion in assertions) {
-                sb.appendLine("    $assertion")
-            }
-        }
-    } else {
-        // Top-level function
-        if (function.returnType != "Unit") {
-            sb.appendLine("    val result = ${function.name}($paramCalls)")
-            for (assertion in assertions) {
-                sb.appendLine("    $assertion")
-            }
-        } else {
-            sb.appendLine("    ${function.name}($paramCalls)")
-            for (assertion in assertions) {
-                sb.appendLine("    $assertion")
-            }
-        }
-    }
-    
-    sb.appendLine("}")
-    return sb.toString()
+    // Generate a unique hash based on the function name and conditions
+    val hash = (functionName + conditionNames).hashCode().toString().replace("-", "")
+    return "test${functionName.capitalize()}When${conditionNames}_$hash"
 }
 
 private fun extractParametersFromCondition(condition: String): List<ParamInfo> {
@@ -1641,19 +1258,6 @@ private fun generateParamSetupForCondition(
     return setups
 }
 
-private fun generateValueForType(type: String): String {
-    return when {
-        type.contains("Int") -> generateUniqueIntValue(emptySet())
-        type.contains("String") -> generateUniqueStringValue(emptySet())
-        type.contains("Boolean") -> "false"
-        type.contains("Double") -> "0.0"
-        type.contains("Float") -> "0.0f"
-        type.contains("Long") -> "0L"
-        else -> "mock()"
-    }
-}
-
-
 private fun generateAssertionsForCombination(
     function: FunctionInfo,
     branch: ConditionalBranchInfo,
@@ -1709,7 +1313,13 @@ private fun generateWhenElseTestCode(
 ): String {
     val sb = StringBuilder()
     sb.appendLine("@Test")
-    sb.appendLine("fun test${function.name.capitalize()}WhenElseBranch() {")
+    
+    // Include parent condition in test name if it exists
+    val parentConditionPart = branch.parentBranch?.let { parent ->
+        "WithParent${parent.condition.toValidMethodName()}"
+    } ?: ""
+    
+    sb.appendLine("fun test${function.name.capitalize()}WhenElseBranch${parentConditionPart}() {")
     
     // Extract the subject of the when expression
     val subjectName = branch.condition
@@ -1717,22 +1327,42 @@ private fun generateWhenElseTestCode(
     // Find a parameter that matches the subject name
     val subjectParam = function.parameters.find { it.name == subjectName }
     
+    val paramSetups = mutableListOf<String>()
+    
+    // First set up parent condition parameters if they exist
+    branch.parentBranch?.let { parent ->
+        val parentParams = extractParametersFromCondition(parent.condition)
+        for (param in parentParams) {
+            if (!paramSetups.any { it.startsWith("val ${param.name} =") }) {
+                paramSetups.addAll(generateParamSetupForCondition(param, parent.condition, true))
+            }
+        }
+    }
+    
     if (subjectParam != null) {
         // Generate a value that doesn't match any of the when entries
         val existingValues = entries.map { it.condition }
         val elseValue = generateElseValue(subjectParam.type, existingValues)
-        sb.appendLine("    val $subjectName = $elseValue")
+        paramSetups.add("val $subjectName = $elseValue")
     }
     
     // Set up other parameters with default values
     for (param in function.parameters) {
-        if (param.name != subjectName) {
-            sb.appendLine("    val ${param.name} = ${generateValueForType(param.type)}")
+        if (param.name != subjectName && !paramSetups.any { it.startsWith("val ${param.name} =") }) {
+            paramSetups.add("val ${param.name} = ${generateValueForType(param.type)}")
         }
+    }
+    
+    // Add parameter setups
+    for (setup in paramSetups) {
+        sb.appendLine("    $setup")
     }
     
     sb.appendLine()
     sb.appendLine("    // Testing else branch of when expression")
+    branch.parentBranch?.let { parent ->
+        sb.appendLine("    // With parent condition: '${parent.condition}'")
+    }
     
     // Call the function with parameters
     val paramCalls = function.parameters.joinToString(", ") { it.name }
@@ -1741,17 +1371,37 @@ private fun generateWhenElseTestCode(
         if (function.returnType != "Unit") {
             sb.appendLine("    val result = testInstance.${function.name}($paramCalls)")
             sb.appendLine("    assertNotNull(result, \"Result should not be null for else branch\")")
+            // Add parent condition verification
+            branch.parentBranch?.let { parent ->
+                sb.appendLine("    // Verify parent condition: '${parent.condition}'")
+                sb.appendLine("    // Parent condition should be true for this test case")
+            }
         } else {
             sb.appendLine("    testInstance.${function.name}($paramCalls)")
             sb.appendLine("    // Verify no exceptions were thrown in else branch")
+            // Add parent condition verification
+            branch.parentBranch?.let { parent ->
+                sb.appendLine("    // Verify parent condition: '${parent.condition}'")
+                sb.appendLine("    // Parent condition should be true for this test case")
+            }
         }
     } else {
         if (function.returnType != "Unit") {
             sb.appendLine("    val result = ${function.name}($paramCalls)")
             sb.appendLine("    assertNotNull(result, \"Result should not be null for else branch\")")
+            // Add parent condition verification
+            branch.parentBranch?.let { parent ->
+                sb.appendLine("    // Verify parent condition: '${parent.condition}'")
+                sb.appendLine("    // Parent condition should be true for this test case")
+            }
         } else {
             sb.appendLine("    ${function.name}($paramCalls)")
             sb.appendLine("    // Verify no exceptions were thrown in else branch")
+            // Add parent condition verification
+            branch.parentBranch?.let { parent ->
+                sb.appendLine("    // Verify parent condition: '${parent.condition}'")
+                sb.appendLine("    // Parent condition should be true for this test case")
+            }
         }
     }
     
@@ -1772,6 +1422,15 @@ private fun generateElseValue(type: String, existingValues: List<String>): Strin
     }
 }
 
+private fun generateValueForType(type: String): String {
+    return when {
+        type.contains("Int") -> generateUniqueIntValue(emptySet())
+        type.contains("String") -> generateUniqueStringValue(emptySet())
+        else -> "mock()"
+    }
+}
+
+
 private fun generateUniqueIntValue(usedValues: Set<Int>): String {
     var value = Random.nextInt(-100, 100)
     while (usedValues.contains(value)) {
@@ -1786,4 +1445,34 @@ private fun generateUniqueStringValue(usedValues: Set<String>): String {
         value = "else_case_${Random.nextInt(100)}"
     }
     return "\"$value\""
+}
+
+/** Builds a unique class name for a branch test */
+private fun buildBranchClassName(functionName: String, combination: List<Pair<Condition, Boolean>>): String {
+    val conditionNames = combination.joinToString("And") { (condition, value) ->
+        val baseCondition = condition.expression.toValidMethodName()
+        if (condition.isNegated) {
+            if (value) "Not$baseCondition" else baseCondition
+        } else {
+            if (value) baseCondition else "Not$baseCondition"
+        }
+    }
+    return "${functionName.capitalize()}When${conditionNames}Test"
+}
+
+/** Builds a unique class name for a when branch test */
+private fun buildWhenBranchClassName(functionName: String, entry: ConditionalBranchInfo): String {
+    val conditionName = entry.condition.toValidMethodName()
+    val parentConditionPart = entry.parentBranch?.let { parent ->
+        "WithParent${parent.condition.toValidMethodName()}"
+    } ?: ""
+    return "${functionName.capitalize()}When${conditionName}${parentConditionPart}Test"
+}
+
+/** Builds a unique class name for a when else branch test */
+private fun buildWhenElseBranchClassName(functionName: String, branch: ConditionalBranchInfo): String {
+    val parentConditionPart = branch.parentBranch?.let { parent ->
+        "WithParent${parent.condition.toValidMethodName()}"
+    } ?: ""
+    return "${functionName.capitalize()}WhenElse${parentConditionPart}Test"
 }
